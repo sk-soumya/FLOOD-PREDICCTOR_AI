@@ -3378,11 +3378,118 @@ async def login_request_otp(
 @router.post(
     "/login/verify-otp"
 )
-def login_verify_otp(
+@router.post("/login/verify-otp")
+def login_verify_otp(req: VerifyOTPRequest):
+    mobile = normalize_phone(req.mobile)
+    otp = (req.otp or "").strip()
 
-    req: VerifyOTPRequest,
+    current = int(time.time())
 
-):
+    with database() as connection:
+        otp_row = connection.execute(
+            """
+            SELECT id, otp_hash, expires_at, attempts
+            FROM otp_requests
+            WHERE destination=?
+              AND expires_at>=?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (mobile, current),
+        ).fetchone()
+
+        if not otp_row:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid or expired OTP.",
+            )
+
+        if otp_row["attempts"] >= OTP_MAX_ATTEMPTS:
+            raise HTTPException(
+                status_code=400,
+                detail="Too many OTP attempts. Request a new OTP.",
+            )
+
+        supplied_hash = otp_hash(
+            mobile,
+            otp,
+        )
+
+        if not hmac.compare_digest(
+            otp_row["otp_hash"],
+            supplied_hash,
+        ):
+            connection.execute(
+                """
+                UPDATE otp_requests
+                SET attempts=attempts+1
+                WHERE id=?
+                """,
+                (otp_row["id"],),
+            )
+
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid or expired OTP.",
+            )
+
+        user = connection.execute(
+            """
+            SELECT
+                user_uid,
+                name,
+                mobile,
+                email,
+                area
+            FROM users
+            WHERE mobile=?
+              AND is_active=1
+            """,
+            (mobile,),
+        ).fetchone()
+
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="Citizen account not found.",
+            )
+
+        now = int(time.time())
+
+        payload = {
+            "sub": str(user["user_uid"]),
+            "role": "citizen",
+            "iat": now,
+            "exp": now + JWT_TTL_SECONDS,
+        }
+
+        token = jwt.encode(
+            payload,
+            JWT_SECRET,
+            algorithm="HS256",
+        )
+
+        connection.execute(
+            """
+            DELETE FROM otp_requests
+            WHERE id=?
+            """,
+            (otp_row["id"],),
+        )
+
+        return {
+            "status": "LOGIN_SUCCESS",
+            "access_token": str(token),
+            "token_type": "bearer",
+            "expires_in": JWT_TTL_SECONDS,
+            "user": {
+                "user_id": user["user_uid"],
+                "name": user["name"],
+                "mobile": user["mobile"],
+                "email": user["email"],
+                "area": user["area"],
+            },
+        }:
 
     mobile = normalize_phone(
         req.mobile
