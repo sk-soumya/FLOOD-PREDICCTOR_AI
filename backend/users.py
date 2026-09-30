@@ -2225,44 +2225,23 @@ def verify_otp(
 # JWT
 # ============================================================
 
-def token_for(
-    user_uid: str,
-) -> str:
-
-    now = int(
-        time.time()
-    )
-
+def token_for(user_uid: str) -> str:
+    now = int(time.time())
 
     payload = {
-
-        "sub":
-            user_uid,
-
-        "role":
-            "citizen",
-
-        "iat":
-            now,
-
-        "exp":
-            now
-            +
-            JWT_TTL_SECONDS,
-
+        "sub": str(user_uid),
+        "role": "citizen",
+        "iat": now,
+        "exp": now + JWT_TTL_SECONDS,
     }
 
-
-    return jwt.encode(
-
+    token = jwt.encode(
         payload,
-
         JWT_SECRET,
-
-        algorithm=
-            JWT_ALGORITHM,
-
+        algorithm="HS256",
     )
+
+    return str(token)
 
 
 # ============================================================
