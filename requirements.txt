@@ -9,9 +9,8 @@ python-multipart
 cryptography
 pywebpush
 pytest
-
+scikit-learn==1.8.0
 joblib
 
-scikit-learn
 
 rasterio
