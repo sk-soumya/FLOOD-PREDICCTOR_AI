@@ -3418,7 +3418,7 @@ def login_verify_otp(req: VerifyOTPRequest):
         if not hmac.compare_digest(
             otp_row["otp_hash"],
             supplied_hash,
-        ):
+        )
             connection.execute(
                 """
                 UPDATE otp_requests
